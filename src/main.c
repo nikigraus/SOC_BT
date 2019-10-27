@@ -1,31 +1,26 @@
-/*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-
 /****************************************************************************
 *
-* This demo showcases creating a GATT database using a predefined attribute table.
-* It acts as a GATT server and can send adv data, be connected by client.
-* Run the gatt_client demo, the client demo will automatically connect to the gatt_server_service_table demo.
-* Client demo will enable GATT server's notify after connection. The two devices will then exchange
-* data.
-*
+* The purpose of this program is to provide SOC (state of charge) values 
+* over bluetooth to the openWB wallbox.
+* The value will be read from CAN bus. The COBID of the respective telegram
+* can be provided by the user by writing the first write characteristics (char_uuid_cobid). 
+* This telegram will be read. CAN telegrams usually have 8 bytes.
+* The user can select the byte to be used by the second write characteristics
+* (char_uuid_byteno). Valid values are 0-7.
+* The SOC value will then be transmitted with the single read characteristics
+* (char_uuid_soc). 
 ****************************************************************************/
 
 
- #include "freertos/FreeRTOS.h"
- #include "freertos/task.h"
- #include "freertos/event_groups.h"
- #include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "esp_system.h"
 
- #define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
- #include "esp_log.h"
- #include "nvs_flash.h"
- #include "esp_bt.h"
+#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+#include "esp_log.h"
+#include "nvs_flash.h"
+#include "esp_bt.h"
 
 #include "esp_gap_ble_api.h"
 #include "esp_gatts_api.h"
@@ -39,7 +34,6 @@
 #define PROFILE_APP_IDX             0
 #define ESP_APP_ID                  0x55
 #define SAMPLE_DEVICE_NAME          "SOC_BT"
-//#define SAMPLE_DEVICE_NAME          "ESP_GATTS_DEMO"
 #define SVC_INST_ID                 0
 
 /* The max length of characteristic value. When the GATT client performs a write or prepare write operation,
@@ -63,7 +57,7 @@ typedef struct {
 
 static prepare_type_env_t prepare_write_env;
 
-#define CONFIG_SET_RAW_ADV_DATA
+//#define CONFIG_SET_RAW_ADV_DATA
 #ifdef CONFIG_SET_RAW_ADV_DATA
 static uint8_t raw_adv_data[] = {
         /* flags */
@@ -73,7 +67,7 @@ static uint8_t raw_adv_data[] = {
         /* service uuid */
         0x03, 0x03, 0xFF, 0x00,
         /* device name */
-        //0x0f, 0x09, 'S', 'O', 'C', '_', 'B', 'T'
+        //0x06, 0x09, 'S', 'O', 'C', '_', 'B', 'T'
         0x0f, 0x09, 'E', 'S', 'P', '_', 'G', 'A', 'T', 'T', 'S', '_', 'D','E', 'M', 'O'
 };
 static uint8_t raw_scan_rsp_data[] = {
@@ -189,11 +183,11 @@ static const uint16_t character_client_config_uuid = ESP_GATT_UUID_CHAR_CLIENT_C
 static const uint8_t char_prop_read                =  ESP_GATT_CHAR_PROP_BIT_READ;
 static const uint8_t char_prop_write               = ESP_GATT_CHAR_PROP_BIT_WRITE;
 static const uint8_t char_prop_read_write_notify   = ESP_GATT_CHAR_PROP_BIT_WRITE | ESP_GATT_CHAR_PROP_BIT_READ | ESP_GATT_CHAR_PROP_BIT_NOTIFY;
-static const uint8_t heart_measurement_ccc[2]      = {0x00, 0x00};
-//static uint8_t char_value[4]                       = {0x11, 0x22, 0x33, 0x44};
+
 static uint8_t soc_value                           = 50;
 static uint16_t cobid_value                        = 0x0374;
 static uint8_t byteno_value                        = 1;
+static uint8_t can_telegram[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 
 
 /* Full Database Description - Used to add attributes into the database */
@@ -213,11 +207,6 @@ static const esp_gatts_attr_db_t gatt_db[HRS_IDX_NB] =
     [IDX_CHAR_VAL_A] =
     {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_128, (uint8_t *)&char_uuid_soc, ESP_GATT_PERM_READ,
       GATTS_DEMO_CHAR_VAL_LEN_MAX, sizeof(soc_value), (uint8_t *)&soc_value}},
-
-    /* Client Characteristic Configuration Descriptor */
-    /*[IDX_CHAR_CFG_A]  =
-    {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_client_config_uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
-      sizeof(uint16_t), sizeof(heart_measurement_ccc), (uint8_t *)heart_measurement_ccc}},*/
 
     /* Characteristic Declaration */
     [IDX_CHAR_B]      =
@@ -624,7 +613,18 @@ void app_main()
         ESP_LOGI(GATTS_TABLE_TAG, "cobid = %x", cobid_value);
         esp_ble_gatts_set_attr_value(soc_bt_handle_table[IDX_CHAR_VAL_A], sizeof(soc_value), (uint8_t*) &soc_value);
         soc_value++;
-        vTaskDelay(1000);
+
+        if(byteno_value < 8)
+        {
+            soc_value = can_telegram[byteno_value];
+        }
+        else
+        {
+            soc_value = 0;
+        }
+        
+
+        vTaskDelay(300);
     }
 
 }
